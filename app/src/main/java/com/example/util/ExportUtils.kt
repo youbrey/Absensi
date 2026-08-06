@@ -1,11 +1,13 @@
 package com.example.util
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.os.Environment
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.example.data.AttendanceEntity
 import java.io.File
 import java.io.FileOutputStream
@@ -14,6 +16,47 @@ import java.util.Date
 import java.util.Locale
 
 object ExportUtils {
+
+    private fun getTargetFile(context: Context, fileName: String): File {
+        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, fileName)
+    }
+
+    private fun copyToPublicDownloads(context: Context, sourceFile: File, fileName: String) {
+        try {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (downloadsDir != null && (downloadsDir.exists() || downloadsDir.mkdirs())) {
+                val publicFile = File(downloadsDir, fileName)
+                sourceFile.copyTo(publicFile, overwrite = true)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun openOrShareFile(context: Context, file: File, mimeType: String) {
+        try {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(intent, "Buka / Bagikan File Laporan (${file.name})").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "Gagal membuka chooser file: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     fun exportToPdf(context: Context, monthYearLabel: String, list: List<AttendanceEntity>): File? {
         return try {
@@ -116,11 +159,14 @@ object ExportUtils {
             pdfDocument.finishPage(page)
 
             val fileName = "Rekap_Absensi_DPRD_Bitung_${monthYearLabel.replace(" ", "_")}.pdf"
-            val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+            val file = getTargetFile(context, fileName)
             pdfDocument.writeTo(FileOutputStream(file))
             pdfDocument.close()
 
-            Toast.makeText(context, "Laporan PDF berhasil diunduh: ${file.name}", Toast.LENGTH_LONG).show()
+            copyToPublicDownloads(context, file, fileName)
+
+            Toast.makeText(context, "Laporan PDF berhasil dibuat: ${file.name}", Toast.LENGTH_SHORT).show()
+            openOrShareFile(context, file, "application/pdf")
             file
         } catch (e: Exception) {
             e.printStackTrace()
@@ -132,7 +178,7 @@ object ExportUtils {
     fun exportToExcelCsv(context: Context, monthYearLabel: String, list: List<AttendanceEntity>): File? {
         return try {
             val fileName = "Rekap_Absensi_DPRD_Bitung_${monthYearLabel.replace(" ", "_")}.csv"
-            val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+            val file = getTargetFile(context, fileName)
             val outputStream = FileOutputStream(file)
 
             val header = "NO,NAMA LENGKAP,NIP,JABATAN,JENIS ABSENSI,JAM MASUK,JAM PULANG,TANGGAL,LOKASI GPS,VERIFIKASI WAJAH,STATUS SYNC\n"
@@ -148,7 +194,10 @@ object ExportUtils {
             outputStream.flush()
             outputStream.close()
 
-            Toast.makeText(context, "Laporan Excel (CSV) berhasil diunduh: ${file.name}", Toast.LENGTH_LONG).show()
+            copyToPublicDownloads(context, file, fileName)
+
+            Toast.makeText(context, "Laporan Excel (CSV) berhasil dibuat: ${file.name}", Toast.LENGTH_SHORT).show()
+            openOrShareFile(context, file, "text/csv")
             file
         } catch (e: Exception) {
             e.printStackTrace()

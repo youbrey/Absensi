@@ -46,6 +46,7 @@ fun UserFormScreen(
     val locationState by viewModel.locationState.collectAsState()
     val isSubmitting by viewModel.isSubmitting.collectAsState()
     val allUsers by viewModel.allUsersList.collectAsState()
+    val scheduleMode by viewModel.scheduleMode.collectAsState()
 
     var showStaffSelectorDialog by remember { mutableStateOf(false) }
 
@@ -64,7 +65,7 @@ fun UserFormScreen(
         HeaderBrandingCard()
 
         // Operational Time Window Badge
-        AttendanceTimeBadge()
+        AttendanceTimeBadge(scheduleMode = scheduleMode)
 
         // Quick Staff Switcher Header
         Surface(
@@ -374,30 +375,38 @@ fun UserFormScreen(
             title = { Text("Pilih Profil Pegawai DPRD Bitung", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    allUsers.forEach { user ->
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.selectUserForForm(user)
-                                    showStaffSelectorDialog = false
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    if (allUsers.isEmpty()) {
+                        Text(
+                            text = "Belum ada data pegawai terdaftar di sistem. Anda dapat mengetik Nama & NIP secara manual pada form di bawah, atau menambah pegawai baru melalui menu Admin.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        allUsers.forEach { user ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.selectUserForForm(user)
+                                        showStaffSelectorDialog = false
+                                    }
                             ) {
-                                Icon(
-                                    imageVector = if (user.tipePegawai == "PNS") Icons.Default.Badge else Icons.Default.WorkHistory,
-                                    contentDescription = null,
-                                    tint = if (user.tipePegawai == "PNS") Color(0xFF0284C7) else Color(0xFFD97706)
-                                )
-                                Column {
-                                    Text(user.namaLengkap, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Text("NIP: ${user.nip} • ${user.jabatan}", fontSize = 11.sp)
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (user.tipePegawai == "PNS") Icons.Default.Badge else Icons.Default.WorkHistory,
+                                        contentDescription = null,
+                                        tint = if (user.tipePegawai == "PNS") Color(0xFF0284C7) else Color(0xFFD97706)
+                                    )
+                                    Column {
+                                        Text(user.namaLengkap, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("NIP: ${user.nip} • ${user.jabatan}", fontSize = 11.sp)
+                                    }
                                 }
                             }
                         }

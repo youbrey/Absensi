@@ -1,11 +1,14 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
+import com.example.ui.components.ScheduleMode
+import com.example.ui.components.getEffectiveTimeWindowStatus
 import com.example.util.CryptoUtils
 import com.example.util.ExportUtils
 import com.example.util.LocationHelper
@@ -22,6 +25,16 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private val db = AppDatabase.getDatabase(application)
     private val attendanceDao = db.attendanceDao()
     private val userDao = db.userDao()
+
+    // Schedule Control Mode (AUTOMATIC, FORCE_OPEN, FORCE_LOCKED)
+    private val _scheduleMode = MutableStateFlow(ScheduleMode.AUTOMATIC)
+    val scheduleMode: StateFlow<ScheduleMode> = _scheduleMode.asStateFlow()
+
+    fun setScheduleMode(mode: ScheduleMode) {
+        _scheduleMode.value = mode
+        val prefs = getApplication<Application>().getSharedPreferences("admin_settings", Context.MODE_PRIVATE)
+        prefs.edit().putString("schedule_mode", mode.name).apply()
+    }
 
     // Active logged in user
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
@@ -88,17 +101,14 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     init {
-        loadInitialUser()
-        refreshGpsLocation()
-    }
-
-    private fun loadInitialUser() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val defaultUser = userDao.getUserByNip("19850419 201001 1 015")
-            if (defaultUser != null) {
-                _currentUser.value = defaultUser
-            }
+        val prefs = getApplication<Application>().getSharedPreferences("admin_settings", Context.MODE_PRIVATE)
+        val savedModeStr = prefs.getString("schedule_mode", ScheduleMode.AUTOMATIC.name)
+        try {
+            _scheduleMode.value = ScheduleMode.valueOf(savedModeStr ?: ScheduleMode.AUTOMATIC.name)
+        } catch (e: Exception) {
+            _scheduleMode.value = ScheduleMode.AUTOMATIC
         }
+        refreshGpsLocation()
     }
 
     fun selectUserForForm(user: UserEntity) {
@@ -127,6 +137,13 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             if (namaLengkap.value.isBlank() || nip.value.isBlank()) {
                 onError("Nama Lengkap dan NIP wajib diisi")
+                return@launch
+            }
+
+            // Check if schedule is currently open (either automatic or forced open)
+            val windowStatus = getEffectiveTimeWindowStatus(_scheduleMode.value)
+            if (!windowStatus.isOpen) {
+                onError("Jadwal absensi sedang dikunci atau diluar jam operasional. Hubungi Admin jika memerlukan pembukaan jadwal uji coba.")
                 return@launch
             }
 

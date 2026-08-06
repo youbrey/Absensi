@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.example.data.AttendanceEntity
+import com.example.ui.components.AttendanceTimeBadge
 import com.example.ui.viewmodel.AttendanceViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +36,7 @@ fun AdminDashboardScreen(
     val context = LocalContext.current
     val allRecords by viewModel.allAttendanceList.collectAsState()
     val selectedMonth by viewModel.selectedMonthFilter.collectAsState()
+    val scheduleMode by viewModel.scheduleMode.collectAsState()
 
     val totalRecords = allRecords.size
     val syncedCount = allRecords.count { it.isSyncedToSheets }
@@ -162,6 +164,9 @@ fun AdminDashboardScreen(
                 }
             }
         }
+
+        // Active Schedule Status Badge
+        AttendanceTimeBadge(scheduleMode = scheduleMode)
 
         // Action Buttons Bar: Export PDF & Export Excel/CSV
         Row(

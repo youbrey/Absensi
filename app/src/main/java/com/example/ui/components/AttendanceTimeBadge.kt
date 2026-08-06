@@ -7,7 +7,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockClock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,9 +20,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Calendar
 
+enum class ScheduleMode(val displayName: String) {
+    AUTOMATIC("Otomatis (Jam Operasional)"),
+    FORCE_OPEN("Buka Jadwal (Uji Coba / Dispensasi)"),
+    FORCE_LOCKED("Kunci Jadwal (Ditutup Total)")
+}
+
 data class TimeWindowStatus(
     val isOpen: Boolean,
-    val windowType: String, // "MASUK", "PULANG", or "CLOSED"
+    val windowType: String, // "MASUK", "PULANG", "UJI_COBA", or "CLOSED"
     val title: String,
     val subtitle: String,
     val color: Color
@@ -61,12 +69,33 @@ fun checkTimeWindow(): TimeWindowStatus {
     }
 }
 
+fun getEffectiveTimeWindowStatus(mode: ScheduleMode): TimeWindowStatus {
+    val base = checkTimeWindow()
+    return when (mode) {
+        ScheduleMode.AUTOMATIC -> base
+        ScheduleMode.FORCE_OPEN -> TimeWindowStatus(
+            isOpen = true,
+            windowType = if (base.windowType != "CLOSED") base.windowType else "UJI_COBA",
+            title = "JADWAL ABSENSI DIBUKA ADMIN (MODE UJI COBA)",
+            subtitle = "Admin membuka akses absensi secara manual untuk simulasi / uji coba.",
+            color = Color(0xFF10B981)
+        )
+        ScheduleMode.FORCE_LOCKED -> TimeWindowStatus(
+            isOpen = false,
+            windowType = "CLOSED",
+            title = "JADWAL ABSENSI DIKUNCI ADMIN",
+            subtitle = "Sistem absensi sedang dikunci oleh Admin secara manual.",
+            color = Color(0xFFEF4444)
+        )
+    }
+}
+
 @Composable
 fun AttendanceTimeBadge(
-    isAdminOverride: Boolean = false,
+    scheduleMode: ScheduleMode = ScheduleMode.AUTOMATIC,
     modifier: Modifier = Modifier
 ) {
-    val status = remember { checkTimeWindow() }
+    val status = remember(scheduleMode) { getEffectiveTimeWindowStatus(scheduleMode) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -80,21 +109,26 @@ fun AttendanceTimeBadge(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
-                imageVector = if (status.isOpen || isAdminOverride) Icons.Default.CheckCircle else Icons.Default.LockClock,
+                imageVector = when {
+                    scheduleMode == ScheduleMode.FORCE_OPEN -> Icons.Default.LockOpen
+                    scheduleMode == ScheduleMode.FORCE_LOCKED -> Icons.Default.Lock
+                    status.isOpen -> Icons.Default.CheckCircle
+                    else -> Icons.Default.LockClock
+                },
                 contentDescription = null,
-                tint = if (isAdminOverride) Color(0xFFF59E0B) else status.color,
+                tint = status.color,
                 modifier = Modifier.size(28.dp)
             )
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isAdminOverride) "MODE ADM / DISPENSASI KHUSUS DIBUKA" else status.title,
-                    color = if (isAdminOverride) Color(0xFFF59E0B) else status.color,
+                    text = status.title,
+                    color = status.color,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (isAdminOverride) "Bebas melakukan verifikasi masuk / pulang kapan saja." else status.subtitle,
+                    text = status.subtitle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )

@@ -16,11 +16,12 @@ data class AttendanceEntity(
     val timeFormatted: String,
     val jamMasuk: String = "-",
     val jamPulang: String = "-",
-    val latitude: Double = 1.4421,
-    val longitude: Double = 125.1834,
-    val locationAddress: String = "Sekretariat DPRD Kota Bitung",
-    val faceVerified: Boolean = true,
-    val faceConfidence: Float = 0.98f,
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val locationAddress: String = "Lokasi tidak tersedia",
+    // Legacy compatibility only; photos are documentation and are never face-verified.
+    val faceVerified: Boolean = false,
+    val faceConfidence: Float = 0f,
     val photoBase64: String = "",
     val isSyncedToSheets: Boolean = false,
     val encryptedHash: String = ""
@@ -35,7 +36,7 @@ data class UserEntity(
     val jabatan: String,
     val tipePegawai: String, // "PNS" or "PPPK"
     val role: String, // "USER" or "ADMIN"
-    val pinCode: String = "123456",
+    val pinCode: String = "",
     val isActive: Boolean = true,
     val allowTimeOverride: Boolean = false
 )

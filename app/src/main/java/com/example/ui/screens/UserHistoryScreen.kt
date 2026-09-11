@@ -33,7 +33,7 @@ fun UserHistoryScreen(
         if (currentUser != null) {
             allRecords.filter { it.nip == currentUser?.nip }
         } else {
-            allRecords
+            emptyList()
         }
     }
 
@@ -43,6 +43,12 @@ fun UserHistoryScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        if (currentUser == null) {
+            Text("Masukkan NIP dan kata sandi pada halaman absensi untuk melihat riwayat Anda.")
+            TextButton(onClick = { viewModel.currentTab.value = 0 }) { Text("Ke halaman absensi") }
+        } else {
+            TextButton(onClick = { viewModel.logoutUser() }) { Text("Keluar dari riwayat") }
+        }
         // Top Header Title
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -181,7 +187,7 @@ fun AttendanceItemCard(record: AttendanceEntity) {
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = "Wajah Terverifikasi (98.5%)",
+                        text = if (record.photoBase64.isNotBlank()) "Foto dokumentasi terlampir" else "Tanpa foto dokumentasi",
                         fontSize = 10.sp,
                         color = Color(0xFF10B981)
                     )

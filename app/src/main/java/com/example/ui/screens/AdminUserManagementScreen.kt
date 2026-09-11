@@ -30,6 +30,10 @@ fun AdminUserManagementScreen(
     val context = LocalContext.current
     val allUsers by viewModel.allUsersList.collectAsState()
 
+    var passwordUser by remember { mutableStateOf<UserEntity?>(null) }
+    var passwordInput by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+    var resetting by remember { mutableStateOf(false) }
     var showAddUserDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -126,18 +130,40 @@ fun AdminUserManagementScreen(
             items(allUsers) { user ->
                 UserPrivilegeCard(
                     user = user,
-                    onToggleActive = { viewModel.toggleUserActiveState(user) }
+                    onToggleActive = { viewModel.toggleUserActiveState(user) },
+                    onResetPassword = { passwordUser = user; passwordInput = ""; passwordError = null }
                 )
             }
         }
     }
 
+    passwordUser?.let { user ->
+        AlertDialog(onDismissRequest = { if (!resetting) passwordUser = null },
+            title = { Text("Atur kata sandi ${user.namaLengkap}") },
+            text = { Column {
+                OutlinedTextField(value = passwordInput, onValueChange = { passwordInput = it },
+                    label = { Text("Kata sandi baru (minimal 8 karakter)") }, singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                passwordError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            } },
+            confirmButton = { TextButton(enabled = !resetting, onClick = {
+                resetting = true
+                viewModel.resetUserPassword(user, passwordInput) { error ->
+                    resetting = false; passwordError = error
+                    if (error == null) passwordUser = null
+                }
+            }) { Text("Simpan") } },
+            dismissButton = { TextButton(enabled = !resetting, onClick = { passwordUser = null }) { Text("Batal") } })
+    }
+
     if (showAddUserDialog) {
         AddUserDialog(
             onDismiss = { showAddUserDialog = false },
-            onSave = { nama, nip, jabatan, tipe, role ->
-                viewModel.saveNewUser(nama, nip, jabatan, tipe, role)
-                showAddUserDialog = false
+            onSave = { nama, nip, jabatan, tipe, role, password, onResult ->
+                viewModel.saveNewUser(nama, nip, jabatan, tipe, role, password) { error ->
+                    onResult(error)
+                    if (error == null) showAddUserDialog = false
+                }
             }
         )
     }
@@ -146,7 +172,8 @@ fun AdminUserManagementScreen(
 @Composable
 fun UserPrivilegeCard(
     user: UserEntity,
-    onToggleActive: () -> Unit
+    onToggleActive: () -> Unit,
+    onResetPassword: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -157,6 +184,7 @@ fun UserPrivilegeCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            TextButton(onClick = onResetPassword) { Text("Atur kata sandi") }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -231,7 +259,7 @@ fun UserPrivilegeCard(
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = if (user.allowTimeOverride) "Hak Akses Buka Jam Bebas" else "Sesuai Jadwal Operasional",
+                        text = if (user.role == "ADMIN") "Pengaturan jadwal melalui login admin" else "Sesuai Jadwal Operasional",
                         fontSize = 10.sp,
                         color = if (user.allowTimeOverride) Color(0xFFF59E0B) else MaterialTheme.colorScheme.outline,
                         fontWeight = FontWeight.Medium
@@ -252,13 +280,16 @@ fun UserPrivilegeCard(
 @Composable
 fun AddUserDialog(
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String) -> Unit
+    onSave: (String, String, String, String, String, String, (String?) -> Unit) -> Unit
 ) {
     var namaInput by remember { mutableStateOf("") }
     var nipInput by remember { mutableStateOf("") }
     var jabatanInput by remember { mutableStateOf("") }
     var tipeSelected by remember { mutableStateOf("PNS") }
     var roleSelected by remember { mutableStateOf("USER") }
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -283,6 +314,11 @@ fun AddUserDialog(
                     label = { Text("Jabatan / Unit Kerja") },
                     singleLine = true
                 )
+
+                OutlinedTextField(value = password, onValueChange = { password = it },
+                    label = { Text("Kata sandi (minimal 8 karakter)") }, singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
@@ -313,9 +349,13 @@ fun AddUserDialog(
         },
         confirmButton = {
             Button(
+                enabled = !saving,
                 onClick = {
                     if (namaInput.isNotBlank() && nipInput.isNotBlank()) {
-                        onSave(namaInput, nipInput, jabatanInput, tipeSelected, roleSelected)
+                        saving = true
+                        onSave(namaInput, nipInput, jabatanInput, tipeSelected, roleSelected, password) {
+                            error = it; saving = false
+                        }
                     }
                 }
             ) {

@@ -18,7 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.Calendar
+import com.example.domain.AttendancePolicy
+import kotlinx.coroutines.delay
 
 enum class ScheduleMode(val displayName: String) {
     AUTOMATIC("Otomatis (Jam Operasional)"),
@@ -35,11 +36,10 @@ data class TimeWindowStatus(
 )
 
 fun checkTimeWindow(): TimeWindowStatus {
-    val cal = Calendar.getInstance()
-    val hour = cal.get(Calendar.HOUR_OF_DAY)
+    val window = AttendancePolicy.window()
 
     return when {
-        hour in 7..8 || (hour == 9 && cal.get(Calendar.MINUTE) == 0) -> {
+        window == "MASUK" -> {
             TimeWindowStatus(
                 isOpen = true,
                 windowType = "MASUK",
@@ -48,7 +48,7 @@ fun checkTimeWindow(): TimeWindowStatus {
                 color = Color(0xFF10B981) // Green
             )
         }
-        hour in 12..13 || (hour == 14 && cal.get(Calendar.MINUTE) == 0) -> {
+        window == "PULANG" -> {
             TimeWindowStatus(
                 isOpen = true,
                 windowType = "PULANG",
@@ -95,7 +95,13 @@ fun AttendanceTimeBadge(
     scheduleMode: ScheduleMode = ScheduleMode.AUTOMATIC,
     modifier: Modifier = Modifier
 ) {
-    val status = remember(scheduleMode) { getEffectiveTimeWindowStatus(scheduleMode) }
+    var status by remember(scheduleMode) { mutableStateOf(getEffectiveTimeWindowStatus(scheduleMode)) }
+    LaunchedEffect(scheduleMode) {
+        while (true) {
+            status = getEffectiveTimeWindowStatus(scheduleMode)
+            delay(1000)
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),

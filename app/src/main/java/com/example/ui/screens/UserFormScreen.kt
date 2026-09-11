@@ -27,7 +27,7 @@ import com.example.data.UserEntity
 import com.example.ui.components.AttendanceTimeBadge
 import com.example.ui.components.HeaderBrandingCard
 import com.example.ui.viewmodel.AttendanceViewModel
-import com.example.verification.RealtimeCameraFaceView
+import com.example.photo.PhotoAttachment
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +36,14 @@ fun UserFormScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val password by viewModel.userPassword.collectAsState()
+    val locationPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshGpsLocation() }
+    fun requestGps() {
+        locationPermission.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+    LaunchedEffect(Unit) { requestGps() }
     val scrollState = rememberScrollState()
 
     val nama by viewModel.namaLengkap.collectAsState()
@@ -138,9 +146,10 @@ fun UserFormScreen(
 
                 OutlinedTextField(
                     value = nama,
-                    onValueChange = { viewModel.namaLengkap.value = it },
+                    onValueChange = {},
+                    readOnly = true,
                     label = { Text("NAMA LENGKAP") },
-                    placeholder = if (!isNamaFocused) { { Text("Masukkan Nama Lengkap") } } else null,
+                    placeholder = if (!isNamaFocused) { { Text("Pilih profil pegawai") } } else null,
                     leadingIcon = { Icon(Icons.Default.AccountBox, contentDescription = null) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -164,9 +173,10 @@ fun UserFormScreen(
 
                 OutlinedTextField(
                     value = jabatan,
-                    onValueChange = { viewModel.jabatan.value = it },
+                    onValueChange = {},
+                    readOnly = true,
                     label = { Text("JABATAN / UNIT KERJA") },
-                    placeholder = if (!isJabatanFocused) { { Text("Masukkan Jabatan") } } else null,
+                    placeholder = if (!isJabatanFocused) { { Text("Sesuai profil pegawai") } } else null,
                     leadingIcon = { Icon(Icons.Default.Work, contentDescription = null) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -174,6 +184,21 @@ fun UserFormScreen(
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
                 )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { viewModel.userPassword.value = it },
+                    label = { Text("Kata sandi pegawai") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
+
+                TextButton(onClick = {
+                    viewModel.loginUser { error ->
+                        if (error == null) viewModel.currentTab.value = 1
+                        else Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("Masuk untuk melihat riwayat") }
 
                 Text(
                     text = "JENIS ABSENSI (PILIH SALAH SATU):",
@@ -245,7 +270,7 @@ fun UserFormScreen(
                     )
                 }
 
-                RealtimeCameraFaceView(
+                PhotoAttachment(
                     capturedBitmap = capturedBitmap,
                     onCaptured = { bmp, base64 ->
                         viewModel.setCapturedPhoto(bmp, base64)
@@ -285,19 +310,19 @@ fun UserFormScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "LOKASI GPS TERVERIFIKASI",
+                        text = if (locationState?.isAvailable == true) "LOKASI GPS TERSEDIA" else "LOKASI GPS BELUM TERSEDIA",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0284C7)
                     )
                     Text(
-                        text = locationState?.address ?: "Mendeteksi Lokasi GPS Kota Bitung...",
+                        text = locationState?.address ?: "Memperoleh lokasi GPS...",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
 
-                IconButton(onClick = { viewModel.refreshGpsLocation() }) {
+                IconButton(onClick = { requestGps() }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh GPS", tint = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -320,7 +345,7 @@ fun UserFormScreen(
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
-                    text = "Keamanan Data Ditingkatkan dengan Enkripsi End-to-End AES-256 & Otomatis Sinkronisasi Google Sheets.",
+                    text = "Foto digunakan sebagai dokumentasi absensi. Data disimpan lokal dan dikirim melalui HTTPS saat webhook tersedia.",
                     fontSize = 10.sp,
                     color = Color(0xFFCBD5E1),
                     lineHeight = 14.sp
@@ -332,10 +357,10 @@ fun UserFormScreen(
         Button(
             onClick = {
                 viewModel.submitAttendance(
-                    onSuccess = {
+                    onSuccess = { synced ->
                         Toast.makeText(
                             context,
-                            "✅ Absensi WFH $jenisAbsensi Berhasil Terkirim & Tersimpan di Google Sheets!",
+                            if (synced) "Absensi tersimpan lokal dan telah diterima Google Sheets." else "Absensi tersimpan lokal. Sinkronisasi Google Sheets masih tertunda.",
                             Toast.LENGTH_LONG
                         ).show()
                     },
@@ -377,12 +402,12 @@ fun UserFormScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (allUsers.isEmpty()) {
                         Text(
-                            text = "Belum ada data pegawai terdaftar di sistem. Anda dapat mengetik Nama & NIP secara manual pada form di bawah, atau menambah pegawai baru melalui menu Admin.",
+                            text = "Belum ada data pegawai terdaftar di sistem. Admin perlu mendaftarkan pegawai beserta kata sandinya terlebih dahulu.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
-                        allUsers.forEach { user ->
+                        allUsers.filter { it.isActive }.forEach { user ->
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant,

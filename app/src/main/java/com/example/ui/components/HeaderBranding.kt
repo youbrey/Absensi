@@ -36,8 +36,8 @@ fun HeaderBrandingCard(
     LaunchedEffect(Unit) {
         while (true) {
             val now = Date()
-            val timeFmt = SimpleDateFormat("HH:mm:ss 'WITA'", Locale("id", "ID"))
-            val dateFmt = SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID"))
+            val timeFmt = SimpleDateFormat("HH:mm:ss 'WITA'", Locale("id", "ID")).apply { timeZone = com.example.domain.AttendancePolicy.zone }
+            val dateFmt = SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).apply { timeZone = com.example.domain.AttendancePolicy.zone }
             currentTimeString = timeFmt.format(now)
             currentDateString = dateFmt.format(now)
             delay(1000)

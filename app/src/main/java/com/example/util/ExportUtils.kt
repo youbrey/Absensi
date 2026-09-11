@@ -6,203 +6,101 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.os.Environment
-import android.widget.Toast
 import androidx.core.content.FileProvider
-import com.example.data.AttendanceEntity
+import com.example.data.AttendanceSummary
+import com.example.domain.AttendancePolicy
 import java.io.File
-import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 object ExportUtils {
-
-    private fun getTargetFile(context: Context, fileName: String): File {
-        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
-        if (!dir.exists()) dir.mkdirs()
-        return File(dir, fileName)
-    }
-
-    private fun copyToPublicDownloads(context: Context, sourceFile: File, fileName: String) {
-        try {
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (downloadsDir != null && (downloadsDir.exists() || downloadsDir.mkdirs())) {
-                val publicFile = File(downloadsDir, fileName)
-                sourceFile.copyTo(publicFile, overwrite = true)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+    private fun target(context: Context, month: String, ext: String): File {
+        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: File(context.filesDir, "reports")
+        check(dir.exists() || dir.mkdirs())
+        return File(dir, "Rekap_Absensi_${month.replace(Regex("[^\\p{L}0-9_-]"), "_")}_${System.currentTimeMillis()}.$ext")
     }
 
     fun openOrShareFile(context: Context, file: File, mimeType: String) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = android.content.ClipData.newRawUri("Laporan absensi", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Simpan / bagikan laporan")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    fun exportToExcelCsv(context: Context, monthYearLabel: String, list: List<AttendanceSummary>): File {
+        val file = target(context, monthYearLabel, "csv")
+        file.bufferedWriter(Charsets.UTF_8).use { out ->
+            out.write("\uFEFF")
+            out.write(CsvUtils.row(listOf("NO", "NAMA LENGKAP", "NIP", "JABATAN", "JENIS ABSENSI", "JAM MASUK", "JAM PULANG", "TANGGAL", "LOKASI GPS", "FOTO DOKUMENTASI", "STATUS SYNC")))
+            list.forEachIndexed { i, item ->
+                out.write(CsvUtils.row(listOf((i + 1).toString(), item.namaLengkap, item.nip, item.jabatan,
+                    item.jenisAbsensi, item.jamMasuk, item.jamPulang, item.dateFormatted, item.locationAddress,
+                    if (item.hasPhoto) "Terlampir" else "Tidak ada", if (item.isSyncedToSheets) "Tersinkron" else "Lokal")))
+            }
+        }
+        return file
+    }
+
+    fun exportToPdf(context: Context, monthYearLabel: String, list: List<AttendanceSummary>): File {
+        val file = target(context, monthYearLabel, "pdf")
+        val doc = PdfDocument()
         try {
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = mimeType
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 9f }
+            val bold = Paint(body).apply { isFakeBoldText = true }
+            val title = Paint(bold).apply { textSize = 12f; textAlign = Paint.Align.CENTER }
+            val columns = listOf(28f, 58f, 153f, 320f, 443f, 628f, 716f)
+            val widths = listOf(26f, 91f, 163f, 119f, 181f, 84f, 96f)
+            var pageNo = 0
+            var y = 0f
+            fun startPage(): PdfDocument.Page {
+                val page = doc.startPage(PdfDocument.PageInfo.Builder(842, 595, ++pageNo).create())
+                val canvas = page.canvas
+                canvas.drawText("PEMERINTAH KOTA BITUNG", 421f, 30f, title)
+                canvas.drawText("SEKRETARIAT DPRD KOTA BITUNG", 421f, 47f, title)
+                canvas.drawText("LAPORAN ABSENSI WFH PNS DAN PPPK • $monthYearLabel", 421f, 65f, title)
+                listOf("NO", "TANGGAL", "NAMA LENGKAP", "NIP", "JABATAN", "MASUK", "PULANG").forEachIndexed { i, text ->
+                    canvas.drawText(text, columns[i], 93f, bold)
+                }
+                canvas.drawLine(28f, 100f, 814f, 100f, body)
+                canvas.drawText("Halaman $pageNo", 748f, 578f, body)
+                y = 115f
+                return page
             }
-            val chooser = Intent.createChooser(intent, "Buka / Bagikan File Laporan (${file.name})").apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            var page = startPage()
+            if (list.isEmpty()) page.canvas.drawText("Tidak ada data pada periode ini.", 28f, y, body)
+            list.forEachIndexed { index, record ->
+                val cells = listOf((index + 1).toString(), AttendancePolicy.format("dd/MM/yyyy", record.timestamp),
+                    record.namaLengkap, record.nip, record.jabatan, record.jamMasuk, record.jamPulang)
+                    .mapIndexed { i, value -> wrap(value, body, widths[i]) }
+                val lineCount = cells.maxOf { it.size }
+                // Split even unusually long legacy rows across pages without dropping text.
+                for (line in 0 until lineCount) {
+                    if (y > 547f) { doc.finishPage(page); page = startPage() }
+                    cells.forEachIndexed { col, lines ->
+                        page.canvas.drawText(lines.getOrElse(line) { "" }, columns[col], y, body)
+                    }
+                    y += 12f
+                }
+                y += 7f
+                page.canvas.drawLine(28f, y - 5f, 814f, y - 5f, body)
             }
-            context.startActivity(chooser)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Gagal membuka chooser file: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+            doc.finishPage(page)
+            file.outputStream().use { doc.writeTo(it) }
+        } finally { doc.close() }
+        return file
     }
 
-    fun exportToPdf(context: Context, monthYearLabel: String, list: List<AttendanceEntity>): File? {
-        return try {
-            val pdfDocument = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 Size in points
-            val page = pdfDocument.startPage(pageInfo)
-            val canvas = page.canvas
-
-            val titlePaint = Paint().apply {
-                color = Color.rgb(15, 23, 42) // Navy
-                textSize = 12f
-                isFakeBoldText = true
-                textAlign = Paint.Align.CENTER
-            }
-
-            val subtitlePaint = Paint().apply {
-                color = Color.rgb(217, 119, 6) // Gold
-                textSize = 10f
-                isFakeBoldText = true
-                textAlign = Paint.Align.CENTER
-            }
-
-            val headerPaint = Paint().apply {
-                color = Color.BLACK
-                textSize = 9f
-                isFakeBoldText = true
-            }
-
-            val bodyPaint = Paint().apply {
-                color = Color.DKGRAY
-                textSize = 8f
-            }
-
-            val linePaint = Paint().apply {
-                color = Color.LTGRAY
-                strokeWidth = 1f
-            }
-
-            var y = 40f
-
-            // Kop Surat Header
-            canvas.drawText("PEMERINTAH KOTA BITUNG", 297f, y, titlePaint)
-            y += 16f
-            canvas.drawText("SEKRETARIAT DPRD KOTA BITUNG", 297f, y, titlePaint)
-            y += 16f
-            canvas.drawText("FORMULIR ABSENSI KEHADIRAN WORK FROM HOME (WFH) PNS DAN PPPK", 297f, y, subtitlePaint)
-            y += 16f
-            canvas.drawText("Laporan Periode Rekapitulasi: $monthYearLabel", 297f, y, bodyPaint.apply { textAlign = Paint.Align.CENTER })
-            bodyPaint.textAlign = Paint.Align.LEFT
-
-            y += 20f
-            canvas.drawLine(30f, y, 565f, y, linePaint.apply { strokeWidth = 2f })
-            y += 20f
-
-            // Table Header
-            val xNo = 35f
-            val xNama = 65f
-            val xNip = 200f
-            val xJabatan = 310f
-            val xJamMasuk = 420f
-            val xJamPulang = 485f
-
-            canvas.drawText("NO", xNo, y, headerPaint)
-            canvas.drawText("NAMA LENGKAP", xNama, y, headerPaint)
-            canvas.drawText("NIP", xNip, y, headerPaint)
-            canvas.drawText("JABATAN", xJabatan, y, headerPaint)
-            canvas.drawText("MASUK", xJamMasuk, y, headerPaint)
-            canvas.drawText("PULANG", xJamPulang, y, headerPaint)
-
-            y += 10f
-            canvas.drawLine(30f, y, 565f, y, linePaint)
-            y += 15f
-
-            var index = 1
-            for (item in list) {
-                if (y > 780f) break // Page safety limit
-                canvas.drawText("$index", xNo, y, bodyPaint)
-                canvas.drawText(item.namaLengkap.take(22), xNama, y, bodyPaint)
-                canvas.drawText(item.nip.take(18), xNip, y, bodyPaint)
-                canvas.drawText(item.jabatan.take(18), xJabatan, y, bodyPaint)
-                canvas.drawText(if (item.jamMasuk.isNotBlank()) item.jamMasuk else "-", xJamMasuk, y, bodyPaint)
-                canvas.drawText(if (item.jamPulang.isNotBlank()) item.jamPulang else "-", xJamPulang, y, bodyPaint)
-
-                y += 18f
-                canvas.drawLine(30f, y - 5f, 565f, y - 5f, linePaint.apply { strokeWidth = 0.5f })
-                index++
-            }
-
-            // Footer Signatures
-            y += 30f
-            if (y < 750f) {
-                val dateNow = SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(Date())
-                canvas.drawText("Bitung, $dateNow", 380f, y, bodyPaint)
-                y += 15f
-                canvas.drawText("Sekretaris DPRD Kota Bitung", 380f, y, headerPaint)
-                y += 45f
-                canvas.drawText("(________________________)", 380f, y, headerPaint)
-            }
-
-            pdfDocument.finishPage(page)
-
-            val fileName = "Rekap_Absensi_DPRD_Bitung_${monthYearLabel.replace(" ", "_")}.pdf"
-            val file = getTargetFile(context, fileName)
-            pdfDocument.writeTo(FileOutputStream(file))
-            pdfDocument.close()
-
-            copyToPublicDownloads(context, file, fileName)
-
-            Toast.makeText(context, "Laporan PDF berhasil dibuat: ${file.name}", Toast.LENGTH_SHORT).show()
-            openOrShareFile(context, file, "application/pdf")
-            file
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Gagal mengekspor PDF: ${e.message}", Toast.LENGTH_SHORT).show()
-            null
+    private fun wrap(value: String, paint: Paint, width: Float): List<String> = value.split('\n').flatMap { paragraph ->
+        val lines = mutableListOf<String>()
+        var remaining = paragraph
+        while (remaining.isNotEmpty()) {
+            val fit = paint.breakText(remaining, true, width, null).coerceAtLeast(1)
+            lines += remaining.substring(0, fit)
+            remaining = remaining.substring(fit)
         }
-    }
-
-    fun exportToExcelCsv(context: Context, monthYearLabel: String, list: List<AttendanceEntity>): File? {
-        return try {
-            val fileName = "Rekap_Absensi_DPRD_Bitung_${monthYearLabel.replace(" ", "_")}.csv"
-            val file = getTargetFile(context, fileName)
-            val outputStream = FileOutputStream(file)
-
-            val header = "NO,NAMA LENGKAP,NIP,JABATAN,JENIS ABSENSI,JAM MASUK,JAM PULANG,TANGGAL,LOKASI GPS,VERIFIKASI WAJAH,STATUS SYNC\n"
-            outputStream.write(header.toByteArray(Charsets.UTF_8))
-
-            var i = 1
-            for (item in list) {
-                val row = "$i,\"${item.namaLengkap}\",\"${item.nip}\",\"${item.jabatan}\",\"${item.jenisAbsensi}\",\"${item.jamMasuk}\",\"${item.jamPulang}\",\"${item.dateFormatted}\",\"${item.locationAddress}\",\"${if (item.faceVerified) "Terverifikasi Wajah" else "Manual"}\",\"${if (item.isSyncedToSheets) "Terhubung Sheets" else "Lokal"}\"\n"
-                outputStream.write(row.toByteArray(Charsets.UTF_8))
-                i++
-            }
-
-            outputStream.flush()
-            outputStream.close()
-
-            copyToPublicDownloads(context, file, fileName)
-
-            Toast.makeText(context, "Laporan Excel (CSV) berhasil dibuat: ${file.name}", Toast.LENGTH_SHORT).show()
-            openOrShareFile(context, file, "text/csv")
-            file
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Gagal mengekspor CSV: ${e.message}", Toast.LENGTH_SHORT).show()
-            null
-        }
+        lines.ifEmpty { listOf("") }
     }
 }

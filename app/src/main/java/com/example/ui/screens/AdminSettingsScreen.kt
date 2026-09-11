@@ -33,8 +33,12 @@ fun AdminSettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
+    var tokenInput by remember { mutableStateOf(viewModel.syncTokenState.value) }
     var webhookInput by remember { mutableStateOf(viewModel.webhookUrlState.value) }
-    var pushEnabled by remember { mutableStateOf(viewModel.pushNotificationsEnabled.value) }
+    val pushEnabled by viewModel.pushNotificationsEnabled.collectAsState()
+    val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> viewModel.setPushNotifications(granted) }
     val currentScheduleMode by viewModel.scheduleMode.collectAsState()
 
     Column(
@@ -260,18 +264,21 @@ fun AdminSettingsScreen(
                     value = webhookInput,
                     onValueChange = {
                         webhookInput = it
-                        GoogleSheetsManager.webhookUrl = it
-                        viewModel.webhookUrlState.value = it
                     },
                     label = { Text("URL Webhook Apps Script") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                OutlinedTextField(value = tokenInput, onValueChange = { tokenInput = it },
+                    label = { Text("Token sinkronisasi") }, singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth())
+
                 Button(
                     onClick = {
-                        GoogleSheetsManager.webhookUrl = webhookInput
-                        Toast.makeText(context, "URL Google Sheets Webhook disimpan!", Toast.LENGTH_SHORT).show()
+                        val saved = viewModel.saveWebhook(webhookInput, tokenInput)
+                        Toast.makeText(context, if (saved) "Konfigurasi webhook disimpan" else "Isi token dan URL deployment HTTPS script.google.com/macros/s/.../exec", Toast.LENGTH_LONG).show()
                     },
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
@@ -313,8 +320,9 @@ fun AdminSettingsScreen(
                     Switch(
                         checked = pushEnabled,
                         onCheckedChange = {
-                            pushEnabled = it
-                            viewModel.pushNotificationsEnabled.value = it
+                            if (it && android.os.Build.VERSION.SDK_INT >= 33) {
+                                notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else { viewModel.setPushNotifications(it) }
                         }
                     )
                 }
@@ -365,7 +373,7 @@ fun AdminSettingsScreen(
                 ) {
                     Icon(Icons.Default.EnhancedEncryption, contentDescription = null, tint = Color(0xFF10B981))
                     Text(
-                        text = "ENKRIPSI END-TO-END AES-256",
+                        text = "PENYIMPANAN & TRANSMISI DATA",
                         color = Color(0xFF10B981),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
@@ -373,7 +381,7 @@ fun AdminSettingsScreen(
                 }
 
                 Text(
-                    text = "Seluruh payload NIP, data foto, dan koordinat GPS dienkripsi dengan standar AES-256 & hash SHA-256 sebelum disimpan ke dalam database lokal maupun ditransmisikan.",
+                    text = "Data absensi tersimpan di database privat aplikasi (tanpa enkripsi database tambahan). Pengiriman memakai HTTPS. Kata sandi disimpan sebagai hash dengan salt. SHA-256 digunakan sebagai ID rekaman untuk mencegah duplikasi kiriman.",
                     color = Color(0xFFCBD5E1),
                     fontSize = 11.sp,
                     lineHeight = 15.sp

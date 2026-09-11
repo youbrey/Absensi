@@ -29,15 +29,15 @@ import java.util.Locale
 fun HeaderBrandingCard(
     modifier: Modifier = Modifier
 ) {
-    var currentTimeString by remember { mutableStateOf("") }
-    var currentDateString by remember { mutableStateOf("") }
+    var currentTimeString by remember { mutableStateOf(com.example.domain.AttendancePolicy.format("HH:mm:ss 'WITA'")) }
+    var currentDateString by remember { mutableStateOf(com.example.domain.AttendancePolicy.format("EEEE, d MMMM yyyy")) }
 
     // Live clock ticker
     LaunchedEffect(Unit) {
         while (true) {
             val now = Date()
-            val timeFmt = SimpleDateFormat("HH:mm:ss 'WITA'", Locale("id", "ID"))
-            val dateFmt = SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID"))
+            val timeFmt = SimpleDateFormat("HH:mm:ss 'WITA'", Locale("id", "ID")).apply { timeZone = com.example.domain.AttendancePolicy.zone }
+            val dateFmt = SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).apply { timeZone = com.example.domain.AttendancePolicy.zone }
             currentTimeString = timeFmt.format(now)
             currentDateString = dateFmt.format(now)
             delay(1000)
@@ -125,7 +125,7 @@ fun HeaderBrandingCard(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = currentDateString.ifEmpty { "Rabu, 5 Agustus 2026" },
+                            text = currentDateString,
                             color = Color(0xFF38BDF8),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -148,7 +148,7 @@ fun HeaderBrandingCard(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = currentTimeString.ifEmpty { "07:30:00 WITA" },
+                                text = currentTimeString,
                                 color = Color(0xFF10B981),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold

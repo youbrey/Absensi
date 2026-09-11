@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.example.data.AttendanceEntity
+import com.example.data.AttendanceSummary
 import com.example.ui.components.AttendanceTimeBadge
 import com.example.ui.viewmodel.AttendanceViewModel
 
@@ -38,17 +38,18 @@ fun AdminDashboardScreen(
     val selectedMonth by viewModel.selectedMonthFilter.collectAsState()
     val scheduleMode by viewModel.scheduleMode.collectAsState()
 
-    val totalRecords = allRecords.size
-    val syncedCount = allRecords.count { it.isSyncedToSheets }
+    val monthRecords = allRecords.filter { com.example.domain.AttendancePolicy.monthLabel(it.timestamp) == selectedMonth }
+    val totalRecords = monthRecords.size
+    val syncedCount = monthRecords.count { it.isSyncedToSheets }
     val unsyncedCount = totalRecords - syncedCount
 
     var searchQuery by remember { mutableStateOf("") }
 
-    val filteredRecords = remember(allRecords, searchQuery) {
+    val filteredRecords = remember(monthRecords, searchQuery) {
         if (searchQuery.isBlank()) {
-            allRecords
+            monthRecords
         } else {
-            allRecords.filter {
+            monthRecords.filter {
                 it.namaLengkap.contains(searchQuery, ignoreCase = true) ||
                 it.nip.contains(searchQuery, ignoreCase = true) ||
                 it.jabatan.contains(searchQuery, ignoreCase = true)
@@ -168,6 +169,21 @@ fun AdminDashboardScreen(
         // Active Schedule Status Badge
         AttendanceTimeBadge(scheduleMode = scheduleMode)
 
+        var monthMenuOpen by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton(onClick = { monthMenuOpen = true }) { Text("Periode: $selectedMonth") }
+            DropdownMenu(expanded = monthMenuOpen, onDismissRequest = { monthMenuOpen = false }) {
+                (listOf(com.example.domain.AttendancePolicy.monthLabel()) + allRecords.map {
+                    com.example.domain.AttendancePolicy.monthLabel(it.timestamp)
+                }).distinct().forEach { month ->
+                    DropdownMenuItem(text = { Text(month) }, onClick = {
+                        viewModel.selectedMonthFilter.value = month
+                        monthMenuOpen = false
+                    })
+                }
+            }
+        }
+
         // Action Buttons Bar: Export PDF & Export Excel/CSV
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -175,10 +191,7 @@ fun AdminDashboardScreen(
         ) {
             Button(
                 onClick = {
-                    val file = viewModel.exportReportPdf()
-                    if (file != null) {
-                        Toast.makeText(context, "PDF Berhasil Diekspor!", Toast.LENGTH_SHORT).show()
-                    }
+                    viewModel.exportReportPdf()
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -193,10 +206,7 @@ fun AdminDashboardScreen(
 
             Button(
                 onClick = {
-                    val file = viewModel.exportReportCsv()
-                    if (file != null) {
-                        Toast.makeText(context, "Excel CSV Berhasil Diekspor!", Toast.LENGTH_SHORT).show()
-                    }
+                    viewModel.exportReportCsv()
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -287,7 +297,7 @@ fun StatCard(
 }
 
 @Composable
-fun AdminAttendanceRowCard(record: AttendanceEntity) {
+fun AdminAttendanceRowCard(record: AttendanceSummary) {
     val isMasuk = record.jenisAbsensi.contains("MASUK", ignoreCase = true)
 
     Card(

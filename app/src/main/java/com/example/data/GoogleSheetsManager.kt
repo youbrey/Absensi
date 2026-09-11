@@ -1,10 +1,9 @@
 package com.example.data
 
-import android.content.Context
-import android.util.Log
-import com.example.util.CryptoUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -13,55 +12,47 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object GoogleSheetsManager {
+    var webhookUrl = ""
+    var syncToken = ""
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS).build()
 
-    private const val TAG = "GoogleSheetsSync"
+    fun isValidWebhook(url: String): Boolean {
+        val parsed = url.toHttpUrlOrNull() ?: return false
+        return parsed.isHttps && parsed.host == "script.google.com" &&
+            Regex("/macros/s/[A-Za-z0-9_-]+/exec").matches(parsed.encodedPath) &&
+            parsed.username.isEmpty() && parsed.password.isEmpty() && parsed.query == null
+    }
 
-    // Default Webhook URL for Secretariat DPRD Bitung Google Apps Script
-    var webhookUrl = "https://script.google.com/macros/s/AKfycbx_DPRD_BITUNG_WFH_SYNC_API/exec"
+    fun payload(record: AttendanceEntity): JSONObject = JSONObject().apply {
+        put("recordId", record.encryptedHash)
+        put("namaLengkap", record.namaLengkap); put("nip", record.nip); put("jabatan", record.jabatan)
+        put("jenisAbsensi", record.jenisAbsensi); put("timestamp", record.timestamp)
+        put("jamMasuk", record.jamMasuk); put("jamPulang", record.jamPulang)
+        put("tanggal", record.dateFormatted); put("foto", record.photoBase64)
+        put("latitude", record.latitude); put("longitude", record.longitude)
+        put("locationAddress", record.locationAddress)
+    }
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+    // A 200 HTML login page or an HTTP redirect is not an acknowledgement of storage.
+    fun isAcknowledged(code: Int, body: String, recordId: String): Boolean = try {
+        val json = JSONObject(body)
+        code in 200..299 && json.opt("success") == true && recordId.isNotBlank() &&
+            json.optString("recordId") == recordId
+    } catch (_: Exception) { false }
 
-    /**
-     * Payload columns according to explicit requirement:
-     * NAMA LENGKAP, NIP, JABATAN, JAM MASUK, JAM PULANG, FOTO
-     */
-    suspend fun syncAttendanceRecord(record: AttendanceEntity): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val jsonPayload = JSONObject().apply {
-                    put("namaLengkap", record.namaLengkap)
-                    put("nip", record.nip)
-                    put("jabatan", record.jabatan)
-                    put("jenisAbsensi", record.jenisAbsensi)
-                    put("jamMasuk", record.jamMasuk)
-                    put("jamPulang", record.jamPulang)
-                    put("tanggal", record.dateFormatted)
-                    put("foto", if (record.photoBase64.isNotBlank()) "DATA:IMAGE/JPEG_BASE64_VERIFIED" else "TERVERIFIKASI_KAMERA_SISTEM")
-                    put("instansi", "SEKRETARIAT DPRD KOTA BITUNG")
-                    put("formTitle", "FORMULIR ABSENSI KEHADIRAN WORK FROM HOME (WFH) PNS DAN PPPK SEKRETARIAT DPRD KOTA BITUNG")
-                    put("encryptedHash", CryptoUtils.generatePayloadHash(record.nip, record.timestamp, record.jenisAbsensi))
-                }
-
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-                val body = jsonPayload.toString().toRequestBody(mediaType)
-                val request = Request.Builder()
-                    .url(webhookUrl)
-                    .post(body)
-                    .build()
-
-                val response = okHttpClient.newCall(request).execute()
-                val isSuccess = response.isSuccessful || response.code == 302 || response.code == 200
-
-                Log.d(TAG, "Sync status for ${record.namaLengkap}: $isSuccess (HTTP ${response.code})")
-                // In local environment or demo webhook, return true to demonstrate smooth sync status
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Error syncing to Google Sheets: ${e.message}")
-                true // Graceful simulation so user sees synced status when testing
+    suspend fun syncAttendanceRecord(record: AttendanceEntity): Boolean = withContext(Dispatchers.IO) {
+        val url = webhookUrl
+        val token = syncToken
+        if (!isValidWebhook(url) || token.isBlank() || record.encryptedHash.isBlank()) return@withContext false
+        try {
+            val request = Request.Builder().url(url)
+                .post(payload(record).put("token", token).toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+            client.newCall(request).execute().use { response ->
+                isAcknowledged(response.code, response.body?.string().orEmpty(), record.encryptedHash)
             }
-        }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { false }
     }
 }

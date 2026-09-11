@@ -35,9 +35,10 @@ fun AdminLoginScreen(
     onBackToUserForm: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val needsSetup by viewModel.needsAdminSetup.collectAsState()
     val focusManager = LocalFocusManager.current
 
-    var usernameInput by remember { mutableStateOf("admin") }
+    var usernameInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -57,14 +58,12 @@ fun AdminLoginScreen(
         isLoading = true
         errorMessage = null
 
-        val success = viewModel.loginAdmin(usernameInput.trim(), passwordInput.trim())
-        isLoading = false
-
-        if (success) {
-            Toast.makeText(context, "Selamat Datang, Administrator!", Toast.LENGTH_SHORT).show()
-            onLoginSuccess()
-        } else {
-            errorMessage = "Username atau Kata Sandi Admin tidak sesuai!"
+        viewModel.loginAdmin(usernameInput.trim(), passwordInput) { error ->
+            isLoading = false
+            if (error == null) {
+                passwordInput = ""
+                onLoginSuccess()
+            } else { errorMessage = error }
         }
     }
 
@@ -169,7 +168,7 @@ fun AdminLoginScreen(
                             errorMessage = null
                         },
                         label = { Text("Username / NIP Admin") },
-                        placeholder = { Text("admin") },
+                        placeholder = { Text("NIP admin") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Person,
@@ -242,7 +241,7 @@ fun AdminLoginScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Kredensial Default:\nUsername: admin | Kata Sandi: admin123",
+                                text = if (needsSetup) "Penyiapan perangkat: masukkan NIP dan kata sandi baru (minimal 8 karakter) untuk membuat admin pertama." else "Masuk menggunakan NIP dan kata sandi admin yang telah didaftarkan.",
                                 fontSize = 11.sp,
                                 color = Color(0xFF334155),
                                 lineHeight = 15.sp
@@ -279,7 +278,7 @@ fun AdminLoginScreen(
                                     tint = Color(0xFFF59E0B)
                                 )
                                 Text(
-                                    text = "MASUK SEBAGAI ADMIN",
+                                    text = if (needsSetup) "BUAT ADMIN PERTAMA" else "MASUK SEBAGAI ADMIN",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     color = Color.White

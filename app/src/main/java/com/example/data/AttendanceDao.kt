@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface AttendanceDao {
 
-    @Query("SELECT * FROM attendance_records ORDER BY timestamp DESC")
-    fun getAllAttendanceFlow(): Flow<List<AttendanceEntity>>
+    @Query("SELECT id, namaLengkap, nip, jabatan, jenisAbsensi, timestamp, dateFormatted, timeFormatted, jamMasuk, jamPulang, locationAddress, (length(photoBase64) > 0) AS hasPhoto, isSyncedToSheets FROM attendance_records ORDER BY timestamp DESC")
+    fun getAllAttendanceFlow(): Flow<List<AttendanceSummary>>
 
     @Query("SELECT * FROM attendance_records WHERE nip = :nip ORDER BY timestamp DESC")
     fun getAttendanceForUserFlow(nip: String): Flow<List<AttendanceEntity>>
@@ -18,7 +18,16 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records WHERE nip = :nip AND dateFormatted = :dateFormatted AND jenisAbsensi = :jenis LIMIT 1")
     suspend fun getTodayRecord(nip: String, dateFormatted: String, jenis: String): AttendanceEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT id FROM attendance_records WHERE isSyncedToSheets = 0 ORDER BY timestamp")
+    suspend fun getUnsyncedIds(): List<Long>
+
+    @Query("SELECT * FROM attendance_records WHERE id = :id")
+    suspend fun getAttendanceById(id: Long): AttendanceEntity?
+
+    @Query("SELECT * FROM attendance_records WHERE nip = :nip AND timestamp >= :start AND timestamp < :end AND jenisAbsensi = :jenis LIMIT 1")
+    suspend fun getRecordInDay(nip: String, start: Long, end: Long, jenis: String): AttendanceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAttendance(record: AttendanceEntity): Long
 
     @Update
@@ -43,7 +52,10 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE nip = :nip LIMIT 1")
     suspend fun getUserByNip(nip: String): UserEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND isActive = 1 AND pinCode LIKE 'pbkdf2:%'")
+    suspend fun getConfiguredAdminCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertUser(user: UserEntity): Long
 
     @Update

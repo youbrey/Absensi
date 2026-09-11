@@ -7,7 +7,7 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.os.Environment
 import androidx.core.content.FileProvider
-import com.example.data.AttendanceEntity
+import com.example.data.AttendanceSummary
 import com.example.domain.AttendancePolicy
 import java.io.File
 
@@ -30,7 +30,7 @@ object ExportUtils {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    fun exportToExcelCsv(context: Context, monthYearLabel: String, list: List<AttendanceEntity>): File {
+    fun exportToExcelCsv(context: Context, monthYearLabel: String, list: List<AttendanceSummary>): File {
         val file = target(context, monthYearLabel, "csv")
         file.bufferedWriter(Charsets.UTF_8).use { out ->
             out.write("\uFEFF")
@@ -38,15 +38,16 @@ object ExportUtils {
             list.forEachIndexed { i, item ->
                 out.write(CsvUtils.row(listOf((i + 1).toString(), item.namaLengkap, item.nip, item.jabatan,
                     item.jenisAbsensi, item.jamMasuk, item.jamPulang, item.dateFormatted, item.locationAddress,
-                    if (item.photoBase64.isNotBlank()) "Terlampir" else "Tidak ada", if (item.isSyncedToSheets) "Tersinkron" else "Lokal")))
+                    if (item.hasPhoto) "Terlampir" else "Tidak ada", if (item.isSyncedToSheets) "Tersinkron" else "Lokal")))
             }
         }
         return file
     }
 
-    fun exportToPdf(context: Context, monthYearLabel: String, list: List<AttendanceEntity>): File {
+    fun exportToPdf(context: Context, monthYearLabel: String, list: List<AttendanceSummary>): File {
         val file = target(context, monthYearLabel, "pdf")
-        PdfDocument().use { doc ->
+        val doc = PdfDocument()
+        try {
             val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 9f }
             val bold = Paint(body).apply { isFakeBoldText = true }
             val title = Paint(bold).apply { textSize = 12f; textAlign = Paint.Align.CENTER }
@@ -88,7 +89,7 @@ object ExportUtils {
             }
             doc.finishPage(page)
             file.outputStream().use { doc.writeTo(it) }
-        }
+        } finally { doc.close() }
         return file
     }
 

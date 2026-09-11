@@ -70,6 +70,17 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    // Call while holding authMutex so concurrent taps share one attempt limit.
+    private suspend fun authenticate(username: String, password: String, adminOnly: Boolean = false): UserEntity {
+        checkLoginAllowed()
+        val user = userDao.getUserByNip(username)
+        val valid = user != null && user.isActive && (!adminOnly || user.role == "ADMIN") &&
+            withContext(Dispatchers.Default) { PasswordHasher.verify(password, user.pinCode) }
+        recordLoginResult(valid)
+        require(valid) { "NIP atau kata sandi tidak sesuai, atau akun tidak aktif" }
+        return requireNotNull(user)
+    }
+
     init {
         GoogleSheetsManager.webhookUrl = webhookUrlState.value
         GoogleSheetsManager.syncToken = syncTokenState.value
@@ -122,18 +133,13 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                             }
                         }
                     }
-                    val admin = userDao.getUserByNip(username)
-                    require(admin != null && admin.role == "ADMIN" && admin.isActive &&
-                        withContext(Dispatchers.Default) { PasswordHasher.verify(password, admin.pinCode) }) {
-                        "NIP atau kata sandi admin tidak sesuai"
-                    }
-                    recordLoginResult(true)
+                    val admin = authenticate(username, password, adminOnly = true)
                     authenticatedAdminId = admin.id
                     _isAdminAuthenticated.value = true
                     needsAdminSetup.value = false
                     null
                 } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { recordLoginResult(false); e.message ?: "Login gagal" }
+                catch (e: Exception) { e.message ?: "Login gagal" }
             }
             onResult(error)
         }
@@ -161,17 +167,12 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         val password = userPassword.value
         viewModelScope.launch {
             try {
-                checkLoginAllowed()
-                val user = userDao.getUserByNip(username)
-                require(user != null && user.isActive && withContext(Dispatchers.Default) {
-                    PasswordHasher.verify(password, user.pinCode)
-                }) { "NIP atau kata sandi pegawai tidak sesuai" }
-                recordLoginResult(true)
+                val user = authMutex.withLock { authenticate(username, password) }
                 _currentUser.value = user
                 userPassword.value = ""
                 onResult(null)
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { recordLoginResult(false); onResult(e.message ?: "Login gagal") }
+            catch (e: Exception) { onResult(e.message ?: "Login gagal") }
         }
     }
 
@@ -198,9 +199,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             try {
                 require(kind == AttendancePolicy.MASUK || kind == AttendancePolicy.PULANG) { "Jenis absensi tidak valid" }
-                val user = userDao.getUserByNip(inputNip)
-                require(user != null && user.isActive) { "Pegawai harus terdaftar dan aktif. Hubungi admin." }
-                require(withContext(Dispatchers.Default) { PasswordHasher.verify(password, user.pinCode) }) { "Kata sandi pegawai tidak sesuai" }
+                val user = authMutex.withLock { authenticate(inputNip, password) }
                 require(bitmap != null && photo.isNotBlank()) { "Foto absensi wajib dilampirkan" }
                 val loc = LocationHelper.getCurrentLocation(getApplication())
                 _locationState.value = loc
@@ -246,9 +245,10 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             syncMutex.withLock {
                 try {
-                    val list = attendanceDao.getUnsyncedRecords()
+                    val list = attendanceDao.getUnsyncedIds()
                     var success = 0
-                    for (item in list) {
+                    for (id in list) {
+                        val item = attendanceDao.getAttendanceById(id) ?: continue
                         if (GoogleSheetsManager.syncAttendanceRecord(item)) {
                             attendanceDao.markSynced(item.id); success++
                         }

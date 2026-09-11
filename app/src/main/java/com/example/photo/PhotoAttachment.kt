@@ -43,7 +43,7 @@ fun PhotoAttachment(capturedBitmap: Bitmap?, onCaptured: (Bitmap, String) -> Uni
                     val bitmap = decodePhoto(context, uri)
                     val bytes = ByteArrayOutputStream().use { out ->
                         check(bitmap.compress(Bitmap.CompressFormat.JPEG, 75, out))
-                        out.toByteArray()
+                        out.toByteArray().also { require(it.size <= 1_000_000) { "Foto terlalu besar" } }
                     }
                     bitmap to Base64.encodeToString(bytes, Base64.NO_WRAP)
                 }
@@ -94,7 +94,7 @@ internal fun decodePhoto(context: Context, uri: Uri): Bitmap {
     context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, bounds) }
     require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Bukan gambar" }
     val options = BitmapFactory.Options().apply { inSampleSize = 1 }
-    while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 1600) options.inSampleSize *= 2
+    while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 1024) options.inSampleSize *= 2
     val bitmap = context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, options) }
         ?: error("Gagal membaca foto")
     val orientation = runCatching { context.contentResolver.openInputStream(uri).use {

@@ -253,15 +253,15 @@ fun UserPrivilegeCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
-                        imageVector = if (user.allowTimeOverride) Icons.Default.Key else Icons.Default.KeyOff,
+                        imageVector = if (user.role == "ADMIN") Icons.Default.Key else Icons.Default.KeyOff,
                         contentDescription = null,
-                        tint = if (user.allowTimeOverride) Color(0xFFF59E0B) else MaterialTheme.colorScheme.outline,
+                        tint = if (user.role == "ADMIN") Color(0xFFF59E0B) else MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
                         text = if (user.role == "ADMIN") "Pengaturan jadwal melalui login admin" else "Sesuai Jadwal Operasional",
                         fontSize = 10.sp,
-                        color = if (user.allowTimeOverride) Color(0xFFF59E0B) else MaterialTheme.colorScheme.outline,
+                        color = if (user.role == "ADMIN") Color(0xFFF59E0B) else MaterialTheme.colorScheme.outline,
                         fontWeight = FontWeight.Medium
                     )
                 }

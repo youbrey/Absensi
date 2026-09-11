@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.example.data.AttendanceEntity
+import com.example.data.AttendanceSummary
 import com.example.ui.components.AttendanceTimeBadge
 import com.example.ui.viewmodel.AttendanceViewModel
 
@@ -297,7 +297,7 @@ fun StatCard(
 }
 
 @Composable
-fun AdminAttendanceRowCard(record: AttendanceEntity) {
+fun AdminAttendanceRowCard(record: AttendanceSummary) {
     val isMasuk = record.jenisAbsensi.contains("MASUK", ignoreCase = true)
 
     Card(

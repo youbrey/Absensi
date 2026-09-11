@@ -40,3 +40,20 @@ data class UserEntity(
     val isActive: Boolean = true,
     val allowTimeOverride: Boolean = false
 )
+
+/** Lightweight list/report projection: never load every photo into a Compose state list. */
+data class AttendanceSummary(
+    val id: Long,
+    val namaLengkap: String,
+    val nip: String,
+    val jabatan: String,
+    val jenisAbsensi: String,
+    val timestamp: Long,
+    val dateFormatted: String,
+    val timeFormatted: String,
+    val jamMasuk: String,
+    val jamPulang: String,
+    val locationAddress: String,
+    val hasPhoto: Boolean,
+    val isSyncedToSheets: Boolean
+)

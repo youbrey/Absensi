@@ -21,6 +21,7 @@ Cakupan: seluruh sumber Kotlin, navigasi/form/admin, DAO/entity/database, utilit
 | Pegawai | NIP duplikat, PIN universal, error insert tidak ditangani | Cek duplikat dalam transaksi, password individual, validasi input dan pesan error |
 | Jadwal | Zona perangkat dipakai tetapi diberi label WITA; badge membeku | Aturan waktu terpisah di AttendancePolicy; Asia/Makassar untuk jam/tanggal/bulan; badge diperbarui |
 | Filter bulan | Default Agustus 2026, ekspor tidak difilter | Default bulan sekarang, pemilih periode nyata, filter konsisten pada monitoring/statistik/ekspor |
+| Memori foto | Semua foto dimuat pada daftar Compose dan antrean sekaligus | Projection ringkas untuk daftar/laporan, ambil foto satu per satu saat sync, ukuran foto dokumentasi dibatasi |
 | Antrean sync | Mengandalkan cache StateFlow yang bisa kosong | Query pending langsung DAO, serialisasi sync, laporan jumlah sukses/gagal |
 | Notifikasi | Helper hanya tes manual; switch tidak persisten; tanpa scheduler | Jadwal alarm harian WITA, penerima reboot/update, izin notifikasi, preferensi persisten |
 | PDF | Menghentikan iterasi setelah satu halaman; teks dipotong; tanpa tanggal baris | Pagination semua baris, wrapping teks, tanggal per baris, ekspor di IO dispatcher |

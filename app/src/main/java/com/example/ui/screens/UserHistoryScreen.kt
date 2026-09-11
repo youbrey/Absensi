@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.AttendanceEntity
+import com.example.data.AttendanceSummary
 import com.example.ui.viewmodel.AttendanceViewModel
 
 @Composable
@@ -127,7 +127,7 @@ fun UserHistoryScreen(
 }
 
 @Composable
-fun AttendanceItemCard(record: AttendanceEntity) {
+fun AttendanceItemCard(record: AttendanceSummary) {
     val isMasuk = record.jenisAbsensi.contains("MASUK", ignoreCase = true)
 
     Card(
@@ -181,13 +181,13 @@ fun AttendanceItemCard(record: AttendanceEntity) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
-                        Icons.Default.Verified,
+                        Icons.Default.PhotoCamera,
                         contentDescription = null,
                         tint = Color(0xFF10B981),
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = if (record.photoBase64.isNotBlank()) "Foto dokumentasi terlampir" else "Tanpa foto dokumentasi",
+                        text = if (record.hasPhoto) "Foto dokumentasi terlampir" else "Tanpa foto dokumentasi",
                         fontSize = 10.sp,
                         color = Color(0xFF10B981)
                     )

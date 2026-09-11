@@ -26,9 +26,9 @@ class DatabaseTest {
     @Test fun pendingQueryDoesNotDependOnUiCollectors() = runTest {
         val dao = db.attendanceDao()
         val id = dao.insertAttendance(record)
-        assertEquals(listOf(id), dao.getUnsyncedRecords().map { it.id })
+        assertEquals(listOf(id), dao.getUnsyncedIds())
         dao.markSynced(id)
-        assertTrue(dao.getUnsyncedRecords().isEmpty())
+        assertTrue(dao.getUnsyncedIds().isEmpty())
     }
     @Test fun dayLookupSeparatesTypeUserAndDay() = runTest {
         val dao = db.attendanceDao()
@@ -43,7 +43,7 @@ class DatabaseTest {
         val dao = db.attendanceDao()
         dao.insertAttendance(record.copy(faceVerified = true, faceConfidence = .985f, isSyncedToSheets = true))
         db.withTransaction { AppDatabase.MIGRATION_2_3.migrate(db.openHelper.writableDatabase) }
-        val stored = dao.getUnsyncedRecords().single()
+        val stored = dao.getAttendanceById(dao.getUnsyncedIds().single())!!
         assertEquals("123", stored.nip)
         assertFalse(stored.faceVerified)
         assertEquals(0f, stored.faceConfidence, 0f)
